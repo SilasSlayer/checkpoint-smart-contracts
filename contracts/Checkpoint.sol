@@ -3,7 +3,20 @@ pragma solidity >=0.4.21 <0.7.0;
 contract Checkpoint {
   address public owner;
   mapping(address => bytes32) public currentMerkleRoot;
-  bytes32[32] zeroBranch;
+
+  event RootUpdated(
+      address sender,
+      bytes32 currentRoot,
+      bytes32 prevRoot,
+      uint timestamp
+  );
+
+  event HistoryRolledBack(
+      address sender,
+      bytes32 currentRoot,
+      bytes32 prevRoot,
+      uint timestamp
+  );
 
   struct RootData {
       //timestamp of current root
@@ -15,13 +28,14 @@ contract Checkpoint {
   mapping(address => mapping(bytes32 => RootData)) public history;
 
   constructor() public {
-    owner = msg.sender;
-    bytes32 zeroData;
-    zeroBranch = calculateBranch(zeroBranch, zeroData);
+  }
+  
+  function getPreviousMerkleRoot(address account) public view returns(bytes32){
+      return history[account][currentMerkleRoot[account]].prevRoot;
   }
 
-  modifier restricted() {
-    if (msg.sender == owner) _;
+  function getCurrentMerkleRoot(address account) public view returns(bytes32){
+      return currentMerkleRoot[account];
   }
 
   function rollBackCurrentMerkleRoot(bytes32 root) public {
@@ -29,24 +43,20 @@ contract Checkpoint {
       require(history[msg.sender][root].timestamp != 0, 'Provided root does not exist in the history');
       currentMerkleRoot[msg.sender] = root;
       //emit history rolled back event
+      emit HistoryRolledBack(msg.sender, root, history[msg.sender][root].prevRoot, block.timestamp);
   }
 
   function updateCurrentMerkleRoot(bytes32 root) public {
-      //get previous root and timestamp (maybechange timestamp to )
+      require(root != currentMerkleRoot[msg.sender], 'Root provided matches current merkle root');
+      //get previous root and timestamp (maybe change timestamp to block.root)
       Checkpoint.RootData memory currentRootData = RootData({
           timestamp: block.timestamp,
           prevRoot: currentMerkleRoot[msg.sender]
       });
       //update current merkle root
+      currentMerkleRoot[msg.sender] = root;
       history[msg.sender][root] = currentRootData;
       //emit root updated event
-  }
-  
-  function calculateBranch(bytes32[32] memory branch, bytes32 data) public pure returns(bytes32[32] memory) {
-      //TODO
-  }
-
-  function validateData(bytes32 root, bytes32[32] memory branch, bytes32 data) public pure returns(bool) {
-      return (root == calculateBranch(branch, data)[0]);
+      emit RootUpdated(msg.sender, root, currentRootData.prevRoot, currentRootData.timestamp);
   }
 }
